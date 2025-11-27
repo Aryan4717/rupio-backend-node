@@ -3,17 +3,45 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 
+// Helper: Split name into first_name and last_name
+const splitName = (name) => {
+  if (!name || typeof name !== 'string') {
+    return { first_name: null, last_name: null };
+  }
+  const trimmed = name.trim();
+  const spaceIndex = trimmed.indexOf(' ');
+  if (spaceIndex === -1) {
+    return { first_name: trimmed || null, last_name: null };
+  }
+  return {
+    first_name: trimmed.substring(0, spaceIndex),
+    last_name: trimmed.substring(spaceIndex + 1).trim() || null
+  };
+};
+
 // Register with email/password
 const register = async (req, res) => {
   try {
-    const { email, phone, password } = req.body;
+    const { email, phone, password, confirm_password, name } = req.body;
 
-    if (!email && !phone) {
-      return res.status(400).json({ error: 'Email or phone is required' });
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
     }
 
     if (!password) {
       return res.status(400).json({ error: 'Password is required' });
+    }
+
+    if (!confirm_password) {
+      return res.status(400).json({ error: 'Confirm password is required' });
+    }
+
+    if (password !== confirm_password) {
+      return res.status(400).json({ error: 'Passwords do not match' });
     }
 
     // Check if user exists
@@ -29,12 +57,17 @@ const register = async (req, res) => {
     const salt = crypto.randomBytes(16).toString('hex');
     const password_hash = await bcrypt.hash(password + salt, 12);
 
+    // Split name into first_name and last_name
+    const { first_name, last_name } = splitName(name);
+
     // Create user
     const user = await User.create({
       email,
       phone,
       password_hash,
-      salt
+      salt,
+      first_name,
+      last_name
     });
 
     // Generate tokens
@@ -48,7 +81,7 @@ const register = async (req, res) => {
       message: 'User registered successfully',
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, phone: user.phone }
+      user: { id: user.id, email: user.email, phone: user.phone, first_name: user.first_name, last_name: user.last_name }
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -96,7 +129,7 @@ const login = async (req, res) => {
       message: 'Login successful',
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, phone: user.phone }
+      user: { id: user.id, email: user.email, phone: user.phone, first_name: user.first_name, last_name: user.last_name }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -107,11 +140,14 @@ const login = async (req, res) => {
 // Google login
 const googleLogin = async (req, res) => {
   try {
-    const { google_id, email } = req.body;
+    const { google_id, email, name } = req.body;
 
     if (!google_id) {
       return res.status(400).json({ error: 'Google ID is required' });
     }
+
+    // Split name into first_name and last_name
+    const { first_name, last_name } = splitName(name);
 
     // Find or create user
     let user = await User.findOne({ where: { google_id } });
@@ -119,12 +155,12 @@ const googleLogin = async (req, res) => {
     if (!user && email) {
       user = await User.findOne({ where: { email } });
       if (user) {
-        await user.update({ google_id });
+        await user.update({ google_id, first_name: user.first_name || first_name, last_name: user.last_name || last_name });
       }
     }
 
     if (!user) {
-      user = await User.create({ google_id, email });
+      user = await User.create({ google_id, email, first_name, last_name });
     }
 
     // Generate tokens
@@ -137,7 +173,7 @@ const googleLogin = async (req, res) => {
       message: 'Google login successful',
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, google_id: user.google_id }
+      user: { id: user.id, email: user.email, google_id: user.google_id, first_name: user.first_name, last_name: user.last_name }
     });
   } catch (error) {
     console.error('Google login error:', error);
@@ -148,11 +184,14 @@ const googleLogin = async (req, res) => {
 // Apple login
 const appleLogin = async (req, res) => {
   try {
-    const { apple_id, email } = req.body;
+    const { apple_id, email, name } = req.body;
 
     if (!apple_id) {
       return res.status(400).json({ error: 'Apple ID is required' });
     }
+
+    // Split name into first_name and last_name
+    const { first_name, last_name } = splitName(name);
 
     // Find or create user
     let user = await User.findOne({ where: { apple_id } });
@@ -160,12 +199,12 @@ const appleLogin = async (req, res) => {
     if (!user && email) {
       user = await User.findOne({ where: { email } });
       if (user) {
-        await user.update({ apple_id });
+        await user.update({ apple_id, first_name: user.first_name || first_name, last_name: user.last_name || last_name });
       }
     }
 
     if (!user) {
-      user = await User.create({ apple_id, email });
+      user = await User.create({ apple_id, email, first_name, last_name });
     }
 
     // Generate tokens
@@ -178,7 +217,7 @@ const appleLogin = async (req, res) => {
       message: 'Apple login successful',
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, apple_id: user.apple_id }
+      user: { id: user.id, email: user.email, apple_id: user.apple_id, first_name: user.first_name, last_name: user.last_name }
     });
   } catch (error) {
     console.error('Apple login error:', error);
